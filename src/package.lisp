@@ -17,6 +17,12 @@
    #:render-json #:render-error #:parse-json
    ;; clug/errors (opt-in)
    #:with-error-catcher #:default-error-renderer
+   ;; clug/session (opt-in)
+   #:with-session
+   #:get-session-value #:put-session-value #:clear-session #:session-id
+   #:store-load #:store-save #:store-delete
+   #:memory-store #:make-memory-store
+   #:generate-sid
    ;; pipeline
    #:pipeline #:run-pipeline
    ;; path

@@ -27,8 +27,17 @@
   :pathname "src/"
   :components ((:file "errors")))
 
+(defsystem "clug/session"
+  :description "Self-contained cookie-based session middleware for clug (opt-in).
+Avoids lack-middleware-session's eager body parsing."
+  :version "0.3.0"
+  :depends-on ("clug" "bordeaux-threads")
+  :pathname "src/"
+  :components ((:file "session")))
+
 (defsystem "clug/tests"
-  :depends-on ("clug" "clug/parsers" "clug/errors" "fiveam" "flexi-streams" "babel")
+  :depends-on ("clug" "clug/parsers" "clug/errors" "clug/session"
+               "fiveam" "flexi-streams" "babel")
   :pathname "tests/"
   :components ((:file "main"))
   :perform (test-op (op c) (symbol-call :fiveam :run! :clug)))

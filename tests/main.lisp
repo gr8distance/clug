@@ -295,3 +295,86 @@ Set-Cookie: a=1"))
          (out (funcall wrapped (make-conn))))
     (is (= 418 (conn-status out)))
     (is (search "\"error\":\"nope\"" (conn-body out)))))
+
+;;; --- clug/session ---------------------------------------------------------
+
+(asdf:load-system :clug/session)
+
+(defun env-with-cookie (cookie)
+  (list :headers (alexandria:plist-hash-table
+                  (when cookie (list "cookie" cookie)) :test 'equal)))
+
+(defun cookie-from-response (response key)
+  "Extract Set-Cookie value for KEY from a Clack response."
+  (loop for (k v) on (second response) by #'cddr
+        when (and (stringp k) (string= k "set-cookie")
+                  (alexandria:starts-with-subseq (format nil "~a=" key) v))
+          return v))
+
+(test session-load-and-save-roundtrip
+  (let* ((store (make-memory-store))
+         (captured-sid nil)
+         (app (with-session
+                (lambda (env)
+                  (let ((conn (make-conn :req env)))
+                    (put-session-value conn :user "alice")
+                    (setf captured-sid (session-id conn))
+                    (list 200 nil '(""))))
+                :store store))
+         (response (funcall app (env-with-cookie nil)))
+         (set-cookie (cookie-from-response response "clug.session")))
+    (is (= 200 (first response)))
+    ;; new SID assigned, Set-Cookie emitted
+    (is (not (null set-cookie)))
+    ;; subsequent request with same cookie -> session restored
+    (let* ((sid (let* ((eq-pos (position #\= set-cookie))
+                       (semi   (position #\; set-cookie)))
+                  (subseq set-cookie (1+ eq-pos) semi)))
+           (loaded nil)
+           (app2 (with-session
+                   (lambda (env)
+                     (let ((c (make-conn :req env)))
+                       (setf loaded (get-session-value c :user))
+                       (list 200 nil '(""))))
+                   :store store)))
+      (declare (ignore captured-sid))
+      (funcall app2 (env-with-cookie (format nil "clug.session=~a" sid)))
+      (is (equal "alice" loaded)))))
+
+(test session-clear-destroys-and-expires-cookie
+  (let* ((store (make-memory-store))
+         (sid "deadbeef"))
+    (store-save store sid (alexandria:plist-hash-table '(:user "alice") :test 'equal))
+    (let* ((app (with-session
+                  (lambda (env)
+                    (let ((c (make-conn :req env)))
+                      (clear-session c)
+                      (list 200 nil '(""))))
+                  :store store))
+           (response (funcall app
+                              (env-with-cookie (format nil "clug.session=~a" sid)))))
+      (is (= 200 (first response)))
+      ;; store entry gone
+      (is (null (store-load store sid)))
+      ;; expiring Set-Cookie emitted (Max-Age=0)
+      (let ((sc (cookie-from-response response "clug.session")))
+        (is (not (null sc)))
+        (is (search "Max-Age=0" sc))))))
+
+(test session-no-cookie-when-not-touched
+  (let* ((app (with-session (lambda (env)
+                              (declare (ignore env))
+                              (list 200 nil '("")))))
+         (response (funcall app (env-with-cookie nil))))
+    ;; handler didn't touch session -> no Set-Cookie
+    (is (null (cookie-from-response response "clug.session")))))
+
+(test session-helpers-default-when-no-session
+  (let ((c (make-conn)))
+    (is (eq :fallback (get-session-value c :missing :fallback)))
+    (is (null (session-id c)))))
+
+(test generate-sid-is-hex
+  (let ((sid (generate-sid 8)))
+    (is (= 16 (length sid)))
+    (is (every (lambda (c) (or (digit-char-p c) (find c "abcdefABCDEF"))) sid))))
