@@ -13,8 +13,15 @@
                (:file "clack"    :depends-on ("conn" "router")))
   :in-order-to ((test-op (test-op "clug/tests"))))
 
+(defsystem "clug/parsers"
+  :description "JSON request/response helpers for clug (opt-in)."
+  :version "0.3.0"
+  :depends-on ("clug" "yason" "babel")
+  :pathname "src/"
+  :components ((:file "parsers")))
+
 (defsystem "clug/tests"
-  :depends-on ("clug" "fiveam" "flexi-streams")
+  :depends-on ("clug" "clug/parsers" "fiveam" "flexi-streams" "babel")
   :pathname "tests/"
   :components ((:file "main"))
   :perform (test-op (op c) (symbol-call :fiveam :run! :clug)))

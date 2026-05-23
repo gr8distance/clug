@@ -12,6 +12,9 @@
    #:halt
    #:get-req-header #:read-req-body
    #:put-resp-cookie #:fetch-req-cookies
+   ;; clug/parsers (opt-in)
+   #:body-string #:json-body #:obj
+   #:render-json #:render-error #:parse-json
    ;; pipeline
    #:pipeline #:run-pipeline
    ;; path

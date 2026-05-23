@@ -211,3 +211,59 @@ Set-Cookie: a=1"))
 
 (test put-header-rejects-set-cookie
   (signals error (put-header (make-conn) "set-cookie" "a=1")))
+
+;;; --- clug/parsers ---------------------------------------------------------
+
+(asdf:load-system :clug/parsers)
+
+(test body-string-passes-string-through
+  (let ((c (make-conn :req (fake-env :raw-body "hello"))))
+    (is (equal "hello" (body-string c)))))
+
+(test body-string-decodes-octets-utf8
+  (let* ((bytes (babel:string-to-octets "あいう" :encoding :utf-8))
+         (stream (flexi-streams:make-in-memory-input-stream bytes))
+         (c (make-conn :req (fake-env :raw-body stream))))
+    (is (equal "あいう" (body-string c)))))
+
+(test json-body-parses-object
+  (let ((c (make-conn :req (fake-env :raw-body "{\"name\":\"alice\",\"n\":42}"))))
+    (let ((h (json-body c)))
+      (is (equal "alice" (gethash "name" h)))
+      (is (= 42 (gethash "n" h))))))
+
+(test json-body-returns-nil-on-empty
+  (is (null (json-body (make-conn :req (fake-env :raw-body ""))))))
+
+(test json-body-signals-on-bad-input
+  (let ((c (make-conn :req (fake-env :raw-body "this is not json"))))
+    (signals error (json-body c))))
+
+(test obj-builds-string-keyed-hash-table
+  (let ((h (obj "a" 1 "b" "two")))
+    (is (= 1 (gethash "a" h)))
+    (is (equal "two" (gethash "b" h)))))
+
+(test render-json-sets-content-type-and-body
+  (let* ((c (render-json (make-conn) 201 (obj "ok" t)))
+         (body (conn-body c)))
+    (is (= 201 (conn-status c)))
+    (is (equal "application/json" (get-resp-header c "content-type")))
+    (is (search "\"ok\":true" body))))
+
+(test render-error-shape
+  (let ((c (render-error (make-conn) 400 "bad")))
+    (is (= 400 (conn-status c)))
+    (is (search "\"error\":\"bad\"" (conn-body c)))))
+
+(test parse-json-stashes-on-content-type
+  (let* ((c (make-conn :req (fake-env :headers '("content-type" "application/json")
+                                      :raw-body "{\"x\":1}")))
+         (c2 (parse-json c)))
+    (is (= 1 (gethash "x" (get-assign c2 :json-body))))))
+
+(test parse-json-passthrough-on-other-content-type
+  (let* ((c (make-conn :req (fake-env :headers '("content-type" "text/plain")
+                                      :raw-body "hello")))
+         (c2 (parse-json c)))
+    (is (null (get-assign c2 :json-body)))))
