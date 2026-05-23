@@ -41,7 +41,7 @@ You'll also need a Clack handler (e.g. `clack-handler-hunchentoot` or
 
 (defun hello (conn)
   (put-resp conn 200 "hello, clug"
-            (list "Content-Type" "text/plain")))
+            (list "content-type" "text/plain")))
 
 (defroutes *routes*
   (:get "/" 'hello))
@@ -80,9 +80,9 @@ Updaters return a fresh conn — don't mutate slots yourself:
 
 ```lisp
 (put-status   conn 201)
-(put-header   conn "Content-Type" "application/json")
+(put-header   conn "content-type" "application/json")  ; names must be lowercase
 (put-body     conn "{\"ok\":true}")
-(put-resp     conn 200 "ok" '("Content-Type" "text/plain"))  ; combo
+(put-resp     conn 200 "ok" '("content-type" "text/plain"))  ; combo
 (assign       conn :user-id "u-123")
 (get-assign   conn :user-id)
 (halt         conn)
@@ -181,6 +181,25 @@ curl -H "Authorization: Bearer x" localhost:5123/api/admin/stats     # 403
 ```
 
 ---
+
+## Security defaults
+
+clug applies Plug-style hygiene at the boundary so handlers can trust the
+values they receive:
+
+- **Path segments and query strings are percent-decoded.** `/files/a%2Fb`
+  matches `/files/:name` with `:name = "a/b"` (the `%2F` stays inside the
+  segment instead of being treated as a separator). `+` in query strings
+  becomes space, and UTF-8 is decoded correctly. Malformed encodings yield
+  empty params rather than crashing the app.
+- **Response header names must be lowercase HTTP tokens (RFC 7230).**
+  `put-header` raises on mixed case, matching Phoenix's strict behaviour
+  and HTTP/2 requirements. Lookups stay simple and case-stable.
+- **Response header values may not contain CR, LF, or NUL.** `put-header`
+  raises, blocking response-splitting / header-injection attacks at the
+  edge where clug controls the data.
+
+`put-header` also rejects non-string names and values up front.
 
 ## Source layout
 

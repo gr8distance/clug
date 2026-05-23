@@ -15,10 +15,18 @@ HANDLER is a symbol or function — a plug. PIPE-THROUGH is a list of plugs."
               :handler handler
               :pipes (alexandria:ensure-list pipe-through))))
 
+(defun split-pipe-through (forms)
+  "Strip a leading :pipe-through pair from FORMS.
+Returns (values pipes-form rest). Used at both macroexpansion and runtime."
+  (if (eq (first forms) :pipe-through)
+      (values (second forms) (cddr forms))
+      (values nil forms)))
+
 (defun %scope (prefix &rest args)
   "Runtime form of SCOPE. Takes already-built entry lists as children."
-  (multiple-value-bind (pipes children) (parse-scope-args args)
-    (let ((prefix-segs (compile-path prefix)))
+  (multiple-value-bind (pipes-value children) (split-pipe-through args)
+    (let ((pipes (alexandria:ensure-list pipes-value))
+          (prefix-segs (compile-path prefix)))
       (loop for child-list in children
             append (loop for entry in child-list
                          collect (extend-entry entry prefix-segs prefix pipes))))))
@@ -40,23 +48,10 @@ Leave (scope ...) calls alone — the SCOPE macro handles its own body."
     (:get \"/users/:id\" 'users-show)
     (scope \"/admin\" :pipe-through '(require-admin)
       (:get \"/stats\" 'admin-stats)))"
-  (multiple-value-bind (opts children) (split-scope-head rest)
-    `(%scope ,prefix ,@opts ,@(mapcar #'rewrite-route-form children))))
-
-(defun split-scope-head (forms)
-  "Split FORMS into ((:pipe-through X) and remaining children)."
-  (if (eq (first forms) :pipe-through)
-      (values (list :pipe-through (second forms)) (cddr forms))
-      (values nil forms)))
-
-(defun parse-scope-args (args)
-  "Split ARGS into (pipe-through-list, list-of-child-entry-lists)."
-  (let ((pipes nil)
-        (rest args))
-    (when (eq (first rest) :pipe-through)
-      (setf pipes (alexandria:ensure-list (second rest))
-            rest (cddr rest)))
-    (values pipes rest)))
+  (multiple-value-bind (pipes children) (split-pipe-through rest)
+    `(%scope ,prefix
+             ,@(when (eq (first rest) :pipe-through) `(:pipe-through ,pipes))
+             ,@(mapcar #'rewrite-route-form children))))
 
 (defun extend-entry (entry prefix-segs prefix pipes)
   (list :method   (getf entry :method)
@@ -73,7 +68,7 @@ Leave (scope ...) calls alone — the SCOPE macro handles its own body."
 
 (defun default-not-found (conn)
   (put-resp conn 404 "Not Found"
-            (list "Content-Type" "text/plain")))
+            (list "content-type" "text/plain")))
 
 (defun add-route (router entry)
   (setf (router-entries router)

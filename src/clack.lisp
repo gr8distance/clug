@@ -12,27 +12,20 @@
    :body    nil))
 
 (defun parse-query-string (qs)
+  "Parse application/x-www-form-urlencoded query into a plist.
+Percent-decoded, '+' treated as space, UTF-8 aware. Malformed input
+yields NIL rather than signalling — bad clients shouldn't crash the app."
   (when (and qs (> (length qs) 0))
-    (loop for pair in (split-by qs #\&)
-          for eq-pos = (position #\= pair)
-          when eq-pos
-            append (list (alexandria:make-keyword
-                          (string-upcase (subseq pair 0 eq-pos)))
-                         (subseq pair (1+ eq-pos))))))
-
-(defun split-by (s ch)
-  (loop with start = 0
-        with len = (length s)
-        for i from 0 to len
-        when (or (= i len) (char= (char s i) ch))
-          collect (subseq s start i)
-          and do (setf start (1+ i))))
+    (handler-case
+        (loop for (k . v) in (quri:url-decode-params qs)
+              append (list (alexandria:make-keyword (string-upcase k)) v))
+      (error () nil))))
 
 (defun conn->clack (conn)
   "Convert conn to Clack response: (status headers body)."
   (let ((body (conn-body conn)))
     (list (conn-status conn)
-          (or (conn-headers conn) (list :content-type "text/plain"))
+          (or (conn-headers conn) (list "content-type" "text/plain"))
           (etypecase body
             (null '(""))
             (string (list body))

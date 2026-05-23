@@ -33,7 +33,34 @@
 (defun put-status (conn status)
   (copy-with conn :status status))
 
+(defun valid-header-name-p (s)
+  "RFC 7230 token, restricted to lowercase. Matches Plug's contract:
+header names are case-sensitively lowercase so downstream HTTP/2 frames
+and case-insensitive lookups stay consistent."
+  (and (stringp s)
+       (> (length s) 0)
+       (every (lambda (c)
+                (or (and (char<= #\a c) (char<= c #\z))
+                    (and (char<= #\0 c) (char<= c #\9))
+                    (find c "!#$%&'*+-.^_`|~")))
+              s)))
+
+(defun valid-header-value-p (s)
+  "Reject CR, LF, NUL — these enable response splitting / header injection."
+  (and (stringp s)
+       (not (find-if (lambda (c)
+                       (or (char= c #\Return)
+                           (char= c #\Newline)
+                           (char= c #\Nul)))
+                     s))))
+
 (defun put-header (conn name value)
+  (unless (valid-header-name-p name)
+    (error "Invalid header name ~s — must be a non-empty lowercase HTTP token (RFC 7230)"
+           name))
+  (unless (valid-header-value-p value)
+    (error "Invalid header value ~s — must be a string with no CR, LF, or NUL"
+           value))
   (copy-with conn
              :headers (list* name value
                              (remove-from-plist-string (conn-headers conn) name))))
@@ -48,11 +75,9 @@
   (copy-with conn :body body))
 
 (defun put-resp (conn status body &optional headers)
-  (let ((c (put-status conn status)))
-    (setf c (put-body c body))
-    (when headers
-      (dolist (pair (loop for (k v) on headers by #'cddr collect (cons k v)))
-        (setf c (put-header c (car pair) (cdr pair)))))
+  (let ((c (put-body (put-status conn status) body)))
+    (loop for (k v) on headers by #'cddr
+          do (setf c (put-header c k v)))
     c))
 
 (defun assign (conn key value)

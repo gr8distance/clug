@@ -21,6 +21,23 @@
     (is (null (match-path c "/users/42/extra"))))
   (is (eq t (match-path (compile-path "/") "/"))))
 
+(test match-decodes-segments
+  (let ((c (compile-path "/files/:name")))
+    ;; %20 -> space; %2F stays inside segment, doesn't act as separator
+    (is (equal '(:name "hello world") (match-path c "/files/hello%20world")))
+    (is (equal '(:name "a/b") (match-path c "/files/a%2Fb")))
+    ;; UTF-8: %E3%81%82 -> あ
+    (is (equal '(:name "あ") (match-path c "/files/%E3%81%82")))))
+
+(test query-string-decodes
+  (let ((p (clug::parse-query-string "a=hello+world&b=%E3%81%82&c=a%26b")))
+    (is (equal "hello world" (getf p :a)))
+    (is (equal "あ" (getf p :b)))
+    (is (equal "a&b" (getf p :c))))
+  ;; malformed input doesn't crash
+  (is (or (null (clug::parse-query-string "a=%ZZ"))
+          (listp (clug::parse-query-string "a=%ZZ")))))
+
 ;;; --- conn / pipeline ---
 
 (test pipeline-halts
@@ -32,10 +49,21 @@
     (is (conn-halted-p out))))
 
 (test put-resp-and-header
-  (let ((c (put-resp (make-conn) 201 "ok" '("Content-Type" "text/plain"))))
+  (let ((c (put-resp (make-conn) 201 "ok" '("content-type" "text/plain"))))
     (is (= 201 (conn-status c)))
     (is (equal "ok" (conn-body c)))
-    (is (equal "text/plain" (getf (conn-headers c) "Content-Type")))))
+    (is (equal "text/plain" (getf (conn-headers c) "content-type")))))
+
+(test put-header-rejects-uppercase
+  (signals error (put-header (make-conn) "Content-Type" "text/plain")))
+
+(test put-header-rejects-crlf
+  (signals error (put-header (make-conn) "x-evil" "foo
+Set-Cookie: a=1"))
+  (signals error (put-header (make-conn) "x-evil" (format nil "ok~creturn" #\Return))))
+
+(test put-header-rejects-non-string
+  (signals error (put-header (make-conn) "content-length" 42)))
 
 ;;; --- router + scope ---
 

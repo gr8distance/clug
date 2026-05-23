@@ -3,14 +3,14 @@
   :version "0.1.0"
   :author "ug <gr8.distance@gmail.com>"
   :license "MIT"
-  :depends-on ("clack" "alexandria")
+  :depends-on ("clack" "alexandria" "quri")
   :pathname "src/"
   :components ((:file "package")
                (:file "conn"     :depends-on ("package"))
                (:file "pipeline" :depends-on ("conn"))
                (:file "path"     :depends-on ("package"))
                (:file "router"   :depends-on ("conn" "pipeline" "path"))
-               (:file "clack"    :depends-on ("conn" "router")))
+               (:file "clack"    :depends-on ("conn" "path" "router")))
   :in-order-to ((test-op (test-op "clug/tests"))))
 
 (defsystem "clug/tests"

@@ -11,7 +11,7 @@
 ;;; --- plugs (middleware) ---
 
 (defun json-headers (conn)
-  (put-header conn "Content-Type" "application/json"))
+  (put-header conn "content-type" "application/json"))
 
 (defun authenticate (conn)
   (let* ((headers (getf (conn-req conn) :headers))
@@ -19,7 +19,7 @@
     (if (and token (search "Bearer " token))
         (assign conn :user-id "u-123")
         (halt (put-resp conn 401 "{\"error\":\"unauthorized\"}"
-                        (list "Content-Type" "application/json"))))))
+                        (list "content-type" "application/json"))))))
 
 (defun require-admin (conn)
   (if (equal (get-assign conn :user-id) "u-admin")
@@ -29,7 +29,7 @@
 ;;; --- handlers (also plugs) ---
 
 (defun hello (conn)
-  (put-resp conn 200 "hello, clug" (list "Content-Type" "text/plain")))
+  (put-resp conn 200 "hello, clug" (list "content-type" "text/plain")))
 
 (defun users-index (conn)
   (put-resp conn 200 "[{\"id\":1},{\"id\":2}]"))

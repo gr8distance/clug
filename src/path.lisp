@@ -3,14 +3,20 @@
 ;;; Path matching: "/users/:id/posts/:pid" -> segments with :param markers.
 ;;; Pure functions only; no regex.
 
+(defun split-by (s ch &key omit-empty)
+  "Split string S on CH. If OMIT-EMPTY, drop zero-length segments."
+  (loop with start = 0
+        with len = (length s)
+        for i from 0 to len
+        when (or (= i len) (char= (char s i) ch))
+          when (or (not omit-empty) (> i start))
+            collect (subseq s start i)
+          end
+          and do (setf start (1+ i))))
+
 (defun split-path (path)
   "Split PATH on '/', dropping empty segments. \"/\" -> NIL."
-  (loop with start = 0
-        with len = (length path)
-        for i from 0 to len
-        when (or (= i len) (char= (char path i) #\/))
-          when (> i start) collect (subseq path start i) end
-          and do (setf start (1+ i))))
+  (split-by path #\/ :omit-empty t))
 
 (defun compile-path (pattern)
   "Return list of segments. Each segment is either a literal string
@@ -23,8 +29,11 @@ or (:param NAME) where NAME is a keyword."
 
 (defun match-path (compiled path)
   "Return params plist if COMPILED matches PATH, else NIL.
-Empty match (both root) returns T to distinguish from no-match."
-  (let ((segs (split-path path)))
+Empty match (both root) returns T to distinguish from no-match.
+Segments are percent-decoded before matching, so '%2F' in a request
+stays inside a single segment rather than acting as a separator."
+  (let ((segs (mapcar (lambda (s) (quri:url-decode s :lenient t))
+                      (split-path path))))
     (when (= (length segs) (length compiled))
       (let ((params nil)
             (ok t))
