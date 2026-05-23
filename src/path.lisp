@@ -18,32 +18,47 @@
   "Split PATH on '/', dropping empty segments. \"/\" -> NIL."
   (split-by path #\/ :omit-empty t))
 
+(defun compile-segment (seg)
+  (cond
+    ((and (> (length seg) 0) (char= (char seg 0) #\:))
+     (list :param (alexandria:make-keyword (string-upcase (subseq seg 1)))))
+    ((and (> (length seg) 0) (char= (char seg 0) #\*))
+     (list :glob  (alexandria:make-keyword (string-upcase (subseq seg 1)))))
+    (t seg)))
+
 (defun compile-path (pattern)
-  "Return list of segments. Each segment is either a literal string
-or (:param NAME) where NAME is a keyword."
-  (mapcar (lambda (seg)
-            (if (and (> (length seg) 0) (char= (char seg 0) #\:))
-                (list :param (alexandria:make-keyword (string-upcase (subseq seg 1))))
-                seg))
-          (split-path pattern)))
+  "Return a list of segments. Each segment is one of:
+  - a literal string
+  - (:param NAME)   — single-segment param via ':name'
+  - (:glob  NAME)   — multi-segment catch-all via '*name', must be last"
+  (let ((segs (mapcar #'compile-segment (split-path pattern))))
+    (let ((glob-pos (position-if (lambda (s) (and (consp s) (eq (car s) :glob))) segs)))
+      (when (and glob-pos (< glob-pos (1- (length segs))))
+        (error "Glob segment must be the last segment in path pattern: ~s" pattern)))
+    segs))
 
 (defun match-path (compiled path)
-  "Return params plist if COMPILED matches PATH, else NIL.
-Empty match (both root) returns T to distinguish from no-match.
-Segments are percent-decoded before matching, so '%2F' in a request
-stays inside a single segment rather than acting as a separator."
+  "Match COMPILED against PATH. Returns params plist, T (empty match), or NIL.
+Segments are percent-decoded before matching, so '%2F' in a request stays
+inside a single segment rather than acting as a separator. A trailing
+(:glob NAME) captures remaining segments as a list."
   (let ((segs (mapcar (lambda (s) (quri:url-decode s :lenient t))
                       (split-path path))))
-    (when (= (length segs) (length compiled))
-      (let ((params nil)
-            (ok t))
-        (loop for c in compiled
-              for s in segs
-              while ok
-              do (cond
-                   ((stringp c)
-                    (unless (string= c s) (setf ok nil)))
-                   ((and (consp c) (eq (car c) :param))
-                    (setf params (list* (cadr c) s params)))))
-        (when ok
-          (or params t))))))
+    (match-segs compiled segs nil)))
+
+(defun match-segs (pattern segs acc)
+  (cond
+    ((and (null pattern) (null segs))
+     (or acc t))
+    ((null pattern) nil)
+    ((and (consp (car pattern)) (eq (caar pattern) :glob))
+     ;; Glob must be last; compile-path enforces this, but stay defensive.
+     (when (null (cdr pattern))
+       (list* (cadar pattern) segs acc)))
+    ((null segs) nil)
+    ((stringp (car pattern))
+     (when (string= (car pattern) (car segs))
+       (match-segs (cdr pattern) (cdr segs) acc)))
+    ((and (consp (car pattern)) (eq (caar pattern) :param))
+     (match-segs (cdr pattern) (cdr segs)
+                 (list* (cadar pattern) (car segs) acc)))))

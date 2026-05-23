@@ -75,33 +75,65 @@ Leave (scope ...) calls alone — the SCOPE macro handles its own body."
         (append (router-entries router) (list entry)))
   router)
 
-(defun match-entry (entries method path)
-  "Return (values entry params) for first match, or NIL."
-  (dolist (e entries)
-    (when (eq (getf e :method) method)
-      (let ((m (match-path (getf e :compiled) path)))
-        (when m
-          (return-from match-entry
-            (values e (if (eq m t) nil m)))))))
-  nil)
+(defun path-matches (entries path)
+  "Return list of (entry . params) for every entry whose pattern matches PATH."
+  (loop for e in entries
+        for m = (match-path (getf e :compiled) path)
+        when m
+          collect (cons e (if (eq m t) nil m))))
+
+(defun allowed-methods (matches)
+  "Methods of MATCHES, plus OPTIONS and (if GET is present) HEAD."
+  (let ((ms (delete-duplicates (mapcar (lambda (p) (getf (car p) :method)) matches))))
+    (setf ms (adjoin :options ms))
+    (when (member :get ms) (setf ms (adjoin :head ms)))
+    ms))
+
+(defun format-allow (methods)
+  (format nil "~{~a~^, ~}"
+          (sort (mapcar (lambda (m) (string-upcase (symbol-name m))) methods)
+                #'string<)))
 
 (defun resolve-plug (plug)
-  "PLUG may be a function, symbol, or (function FN)."
+  "PLUG may be a function or symbol."
   (etypecase plug
     (function plug)
     (symbol (symbol-function plug))))
 
+(defun run-entry (entry params conn)
+  (let* ((c (merge-params conn params))
+         (plugs (append (mapcar #'resolve-plug (getf entry :pipes))
+                        (list (resolve-plug (getf entry :handler))))))
+    (apply #'run-pipeline c plugs)))
+
 (defmethod call-router ((router router) conn)
-  (multiple-value-bind (entry params)
-      (match-entry (router-entries router)
-                   (conn-method conn)
-                   (conn-path conn))
-    (if entry
-        (let* ((c (merge-params conn params))
-               (plugs (append (mapcar #'resolve-plug (getf entry :pipes))
-                              (list (resolve-plug (getf entry :handler))))))
-          (apply #'run-pipeline c plugs))
-        (funcall (resolve-plug (router-not-found router)) conn))))
+  (let* ((method  (conn-method conn))
+         (matches (path-matches (router-entries router) (conn-path conn))))
+    (cond
+      ;; No path matched at all -> 404.
+      ((null matches)
+       (funcall (resolve-plug (router-not-found router)) conn))
+      ;; OPTIONS preflight: respond with Allow listing supported methods.
+      ((eq method :options)
+       (put-resp conn 204 nil
+                 (list "allow" (format-allow (allowed-methods matches)))))
+      (t
+       (let ((hit (find method matches :key (lambda (p) (getf (car p) :method)))))
+         (cond
+           (hit (run-entry (car hit) (cdr hit) conn))
+           ;; HEAD falls back to GET handler; body is stripped in conn->clack.
+           ((eq method :head)
+            (let ((get-hit (find :get matches
+                                 :key (lambda (p) (getf (car p) :method)))))
+              (if get-hit
+                  (run-entry (car get-hit) (cdr get-hit) conn)
+                  (method-not-allowed conn matches))))
+           (t (method-not-allowed conn matches))))))))
+
+(defun method-not-allowed (conn matches)
+  (put-resp conn 405 "Method Not Allowed"
+            (list "content-type" "text/plain"
+                  "allow" (format-allow (allowed-methods matches)))))
 
 ;;; The router itself is a plug.
 (defun router-as-plug (router)

@@ -6,15 +6,15 @@
   :depends-on ("clack" "alexandria" "quri")
   :pathname "src/"
   :components ((:file "package")
-               (:file "conn"     :depends-on ("package"))
-               (:file "pipeline" :depends-on ("conn"))
                (:file "path"     :depends-on ("package"))
+               (:file "conn"     :depends-on ("package" "path"))
+               (:file "pipeline" :depends-on ("conn"))
                (:file "router"   :depends-on ("conn" "pipeline" "path"))
-               (:file "clack"    :depends-on ("conn" "path" "router")))
+               (:file "clack"    :depends-on ("conn" "router")))
   :in-order-to ((test-op (test-op "clug/tests"))))
 
 (defsystem "clug/tests"
-  :depends-on ("clug" "fiveam")
+  :depends-on ("clug" "fiveam" "flexi-streams")
   :pathname "tests/"
   :components ((:file "main"))
   :perform (test-op (op c) (symbol-call :fiveam :run! :clug)))

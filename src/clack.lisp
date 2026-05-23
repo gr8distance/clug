@@ -22,15 +22,19 @@ yields NIL rather than signalling — bad clients shouldn't crash the app."
       (error () nil))))
 
 (defun conn->clack (conn)
-  "Convert conn to Clack response: (status headers body)."
-  (let ((body (conn-body conn)))
+  "Convert conn to Clack response: (status headers body).
+Body is empty for HEAD responses (RFC 7231); other types pass through:
+string -> wrapped, list/pathname/stream/octet-vector -> as-is."
+  (let ((body (if (eq (conn-method conn) :head) nil (conn-body conn))))
     (list (conn-status conn)
           (or (conn-headers conn) (list "content-type" "text/plain"))
           (etypecase body
-            (null '(""))
+            (null '())
             (string (list body))
             (cons body)
-            (pathname body)))))
+            (pathname body)
+            ((vector (unsigned-byte 8)) body)
+            (stream body)))))
 
 (defun to-clack-app (plug-or-router)
   "Adapt a plug (or router) to a Clack app: (lambda (env) ...)."

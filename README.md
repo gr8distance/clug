@@ -79,14 +79,42 @@ its in-progress response.
 Updaters return a fresh conn — don't mutate slots yourself:
 
 ```lisp
-(put-status   conn 201)
-(put-header   conn "content-type" "application/json")  ; names must be lowercase
-(put-body     conn "{\"ok\":true}")
-(put-resp     conn 200 "ok" '("content-type" "text/plain"))  ; combo
-(assign       conn :user-id "u-123")
-(get-assign   conn :user-id)
-(halt         conn)
+(put-status      conn 201)
+(put-header      conn "content-type" "application/json")  ; names must be lowercase
+(put-body        conn "{\"ok\":true}")
+(put-resp        conn 200 "ok" '("content-type" "text/plain"))  ; combo
+(get-resp-header conn "content-type")                     ; case-insensitive
+(assign          conn :user-id "u-123")
+(get-assign      conn :user-id)
+(halt            conn)
 ```
+
+### Request helpers
+
+```lisp
+(get-req-header conn "content-type")        ; case-insensitive lookup
+
+(multiple-value-bind (body conn) (read-req-body conn)
+  ;; body is a string or octet vector; reads from :raw-body once and
+  ;; caches the result on the returned conn
+  ...)
+```
+
+### Cookies
+
+```lisp
+;; set a cookie (HttpOnly + Path=/ by default; value is percent-encoded)
+(put-resp-cookie conn "sid" "abc123"
+                 :max-age 3600 :secure t :same-site :lax)
+
+;; parse the request Cookie header into an alist
+(multiple-value-bind (cookies conn) (fetch-req-cookies conn)
+  (cdr (assoc "sid" cookies :test #'equal)))
+```
+
+Multiple `put-resp-cookie` calls produce multiple `Set-Cookie` headers
+(they coexist). Using `put-header` with `"set-cookie"` raises — use
+`put-resp-cookie` instead.
 
 ### Plugs and pipelines
 
@@ -124,12 +152,23 @@ plugs. Scopes nest freely.
     (:get  "/users/:id"  'users-show)
     (:post "/users"      'users-create)
     (scope "/admin" :pipe-through '(require-admin)
-      (:get "/stats" 'admin-stats))))
+      (:get "/stats" 'admin-stats)))
+  (:get "/static/*path" 'serve-static))   ; '*' globs remaining segments
 ```
 
 If you'd rather build routes programmatically, the underlying `route` function
 is still exported: `(route :get "/x" 'h :pipe-through '(p))` returns an entry
 list you can splice into `make-router`.
+
+`:name` binds one segment; `*name` binds all remaining segments as a list.
+A glob must be the last segment of the pattern.
+
+The router also handles HTTP method semantics correctly:
+
+- **HEAD** falls back to the matching GET handler; the response body is stripped.
+- **OPTIONS** on a matched path responds 204 with an `Allow` header.
+- **405 Method Not Allowed** (with `Allow`) is returned when a path matches but
+  no entry handles the request's method — not 404.
 
 For `/api/admin/stats`, the effective pipeline becomes:
 

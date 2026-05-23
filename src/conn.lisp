@@ -61,6 +61,8 @@ and case-insensitive lookups stay consistent."
   (unless (valid-header-value-p value)
     (error "Invalid header value ~s — must be a string with no CR, LF, or NUL"
            value))
+  (when (string= name "set-cookie")
+    (error "Use PUT-RESP-COOKIE instead of PUT-HEADER for set-cookie."))
   (copy-with conn
              :headers (list* name value
                              (remove-from-plist-string (conn-headers conn) name))))
@@ -70,6 +72,13 @@ and case-insensitive lookups stay consistent."
   (loop for (k v) on plist by #'cddr
         unless (string-equal k key)
           append (list k v)))
+
+(defun get-resp-header (conn name)
+  "Return the response header NAME, or NIL. Case-insensitive.
+Use this rather than GETF — CL's GETF compares with EQ, which is
+unreliable for string keys across compilation units."
+  (loop for (k v) on (conn-headers conn) by #'cddr
+        when (string-equal k name) return v))
 
 (defun put-body (conn body)
   (copy-with conn :body body))
@@ -93,3 +102,96 @@ and case-insensitive lookups stay consistent."
 
 (defun halt (conn)
   (copy-with conn :halted-p t))
+
+;;; --- request helpers ---
+
+(defun get-req-header (conn name)
+  "Return request header NAME (case-insensitive lookup), or NIL.
+Assumes Clack adapter delivers env's :headers as a hash-table keyed by
+lowercase strings — the standard Lack/Clack convention."
+  (let ((headers (getf (conn-req conn) :headers)))
+    (when (hash-table-p headers)
+      (gethash (string-downcase name) headers))))
+
+(defun read-req-body (conn)
+  "Read the raw request body once. Returns (values body conn) where the
+result is cached on the returned conn under :%req-body. BODY is a string
+(if the adapter handed us one), an octet vector, or NIL."
+  (let ((cached (get-assign conn :%req-body 'not-cached)))
+    (if (not (eq cached 'not-cached))
+        (values cached conn)
+        (let* ((raw  (getf (conn-req conn) :raw-body))
+               (body (cond
+                       ((null raw)     nil)
+                       ((stringp raw)  raw)
+                       ((streamp raw)  (drain-octets raw))
+                       (t              raw))))
+          (values body (assign conn :%req-body body))))))
+
+(defun drain-octets (stream)
+  (let ((out (make-array 256 :element-type '(unsigned-byte 8)
+                             :adjustable t :fill-pointer 0)))
+    (loop for byte = (read-byte stream nil nil)
+          while byte do (vector-push-extend byte out))
+    (coerce out '(simple-array (unsigned-byte 8) (*)))))
+
+;;; --- cookies ---
+
+(defun fetch-req-cookies (conn)
+  "Parse the request Cookie header into an alist of (string . string) pairs.
+Returns (values cookies conn) with the result cached under :%req-cookies."
+  (let ((cached (get-assign conn :%req-cookies 'not-cached)))
+    (if (not (eq cached 'not-cached))
+        (values cached conn)
+        (let ((cookies (parse-cookie-header (get-req-header conn "cookie"))))
+          (values cookies (assign conn :%req-cookies cookies))))))
+
+(defun parse-cookie-header (s)
+  (when s
+    (loop for kv in (split-by s #\;)
+          for trimmed = (string-trim '(#\Space #\Tab) kv)
+          for eq-pos = (position #\= trimmed)
+          when (and eq-pos (> eq-pos 0))
+            collect (cons (subseq trimmed 0 eq-pos)
+                          (quri:url-decode (subseq trimmed (1+ eq-pos)) :lenient t)))))
+
+(defun valid-cookie-name-p (s)
+  (and (stringp s)
+       (> (length s) 0)
+       (every (lambda (c)
+                (and (char> c #\Space)
+                     (char< c (code-char 127))
+                     (not (find c "()<>@,;:\\\"/[]?={}"))))
+              s)))
+
+(defun put-resp-cookie (conn name value
+                        &key (path "/") domain max-age expires
+                             (http-only t) secure same-site)
+  "Append a Set-Cookie response header. VALUE is percent-encoded.
+SAME-SITE is :strict, :lax, or :none. Multiple cookies coexist as
+separate Set-Cookie headers (bypassing put-header's dedup)."
+  (unless (valid-cookie-name-p name)
+    (error "Invalid cookie name ~s — must be a non-empty cookie token (RFC 6265)" name))
+  (check-type value string)
+  (copy-with conn
+             :headers (list* "set-cookie"
+                             (serialize-cookie name value
+                                               :path path :domain domain
+                                               :max-age max-age :expires expires
+                                               :http-only http-only :secure secure
+                                               :same-site same-site)
+                             (conn-headers conn))))
+
+(defun serialize-cookie (name value &key path domain max-age expires
+                                         http-only secure same-site)
+  (with-output-to-string (s)
+    (format s "~a=~a" name (quri:url-encode value))
+    (when path     (format s "; Path=~a" path))
+    (when domain   (format s "; Domain=~a" domain))
+    (when max-age  (format s "; Max-Age=~a" max-age))
+    (when expires  (format s "; Expires=~a" expires))
+    (when http-only (write-string "; HttpOnly" s))
+    (when secure   (write-string "; Secure" s))
+    (when same-site
+      (format s "; SameSite=~a"
+              (ecase same-site (:strict "Strict") (:lax "Lax") (:none "None"))))))
