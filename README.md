@@ -57,6 +57,86 @@ curl localhost:5000/        # => hello, clug
 
 ---
 
+## Feature lookup
+
+Where each feature lives — three tiers: clug core (always available),
+opt-in clug sub-systems (same repo, separate `ql:quickload`), and
+existing Clack/Lack ecosystem libraries.
+
+### In clug core — just `(ql:quickload :clug)`
+
+| Want | Use |
+|---|---|
+| Routing (`GET`/`POST`/...) | `defroutes`, `(:get "/path" 'handler)` shorthand |
+| Path params | `:name` segments (`/users/:id`) |
+| Wildcard / catch-all routes | `*name` (last segment, `/static/*path`) |
+| Nested route groups + shared plugs | `(scope "/api" :pipe-through '(auth) ...)` |
+| `HEAD` / `OPTIONS` / `405 Method Not Allowed` | Automatic, RFC-compliant |
+| Plug composition | `pipeline`, `halt`, `assign`/`get-assign` |
+| Request headers | `(get-req-header conn "x-foo")` |
+| Request body (raw, single-read cache) | `(read-req-body conn)` |
+| Query string | Auto-parsed into `(conn-params conn)` |
+| Response status / body / header | `put-status`, `put-body`, `put-header`, `put-resp` |
+| Response header lookup | `(get-resp-header conn "content-type")` |
+| Response cookies (single) | `(put-resp-cookie conn "key" "val" :max-age ...)` |
+| Request cookie parsing | `(fetch-req-cookies conn)` |
+| Percent-decoding (path + query) | Automatic |
+| Header injection / CRLF defense | Automatic (`put-header` rejects) |
+
+### Opt-in clug sub-systems — same repo
+
+| Want | Pull | Use |
+|---|---|---|
+| JSON request body → hash-table | `:clug/parsers` | `(json-body conn)` |
+| JSON response | `:clug/parsers` | `(render-json conn 200 (obj ...))`, `render-error` |
+| Plug-form JSON body parser | `:clug/parsers` | `parse-json` plug → `(get-assign conn :json-body)` |
+| Catch handler errors → 500 | `:clug/errors` | `(with-error-catcher router :renderer ...)` |
+| Server-side session (no body parsing!) | `:clug/session` | `with-session` middleware + `get-session-value`/`put-session-value`/`clear-session` |
+| Pluggable session store | `:clug/session` | implement `store-load`/`store-save`/`store-delete` generic functions |
+
+### From the existing Lack / Clack ecosystem
+
+| Want | Use |
+|---|---|
+| Static file serving | `lack-middleware-static` or `lack-app-file` / `lack-app-directory` |
+| CSRF protection | `lack-middleware-csrf` |
+| Access logging | `lack-middleware-accesslog` |
+| Dev-mode pretty error pages | `lack-middleware-backtrace` |
+| gzip response compression | `lack-middleware-deflater` |
+| Mount sub-apps at a prefix (Plug's `forward`) | `lack-middleware-mount` |
+| HTTP Basic auth | `lack-middleware-auth-basic` |
+| WebSocket | `clack-socket` + `websocket-driver` |
+| Form / multipart body parsing | `(lack.request:request-body-parameters (lack.request:make-request env))` |
+| Accept-header content negotiation | `lack.request:request-accepts-p` |
+| DB connection pool | `lack-middleware-dbpool` |
+| Alternative session store (Redis / DB) | `lack-session-store-redis` / `-dbi` *(if using `lack-middleware-session` instead of `clug/session`)* |
+| Server adapter (HTTP) | `clack-handler-hunchentoot`, `-woo`, `-toot`, `-wookie` |
+| HTTP client | `dexador` |
+| JSON library (if you prefer another) | `jonathan`, `jzon`, `cl-json` *(`clug/parsers` uses `yason`)* |
+| HTML templating | `spinneret`, `cl-who`, `djula` |
+| Database access | `cl-dbi`, `mito` |
+
+### Sample combinations
+
+```lisp
+;; Minimal — routing only, no JSON, no session
+(ql:quickload :clug)
+
+;; JSON REST API with error handling
+(ql:quickload '(:clug :clug/parsers :clug/errors))
+
+;; Full app: API + session + static + logs
+(ql:quickload '(:clug :clug/parsers :clug/errors :clug/session
+                :clack-handler-hunchentoot :lack))
+;; then in lack:builder add :accesslog :backtrace
+;; (:static :path "/public/" :root #P"public/")
+;; and wrap with with-session
+
+;; Heavy uploads / form bodies — add lack-request directly
+(ql:quickload '(:clug :clug/parsers :clug/errors :clug/session :lack-request))
+;; call (lack.request:request-body-parameters ...) inside handlers
+```
+
 ## Core concepts
 
 ### conn — the value that flows
