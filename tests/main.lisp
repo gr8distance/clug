@@ -267,3 +267,31 @@ Set-Cookie: a=1"))
                                       :raw-body "hello")))
          (c2 (parse-json c)))
     (is (null (get-assign c2 :json-body)))))
+
+;;; --- clug/errors ----------------------------------------------------------
+
+(asdf:load-system :clug/errors)
+
+(test with-error-catcher-passthrough-on-success
+  (let* ((plug (lambda (c) (put-resp c 200 "ok")))
+         (wrapped (with-error-catcher plug))
+         (out (funcall wrapped (make-conn))))
+    (is (= 200 (conn-status out)))
+    (is (equal "ok" (conn-body out)))))
+
+(test with-error-catcher-returns-500-on-error
+  (let* ((plug (lambda (c) (declare (ignore c)) (error "boom")))
+         (wrapped (with-error-catcher plug))
+         (out (funcall wrapped (make-conn))))
+    (is (= 500 (conn-status out)))
+    (is (search "boom" (conn-body out)))))
+
+(test with-error-catcher-honors-custom-renderer
+  (let* ((plug (lambda (c) (declare (ignore c)) (error "nope")))
+         (wrapped (with-error-catcher
+                   plug
+                   :renderer (lambda (c e)
+                               (render-error c 418 (format nil "~a" e)))))
+         (out (funcall wrapped (make-conn))))
+    (is (= 418 (conn-status out)))
+    (is (search "\"error\":\"nope\"" (conn-body out)))))

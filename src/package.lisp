@@ -15,6 +15,8 @@
    ;; clug/parsers (opt-in)
    #:body-string #:json-body #:obj
    #:render-json #:render-error #:parse-json
+   ;; clug/errors (opt-in)
+   #:with-error-catcher #:default-error-renderer
    ;; pipeline
    #:pipeline #:run-pipeline
    ;; path

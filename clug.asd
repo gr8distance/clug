@@ -20,8 +20,15 @@
   :pathname "src/"
   :components ((:file "parsers")))
 
+(defsystem "clug/errors"
+  :description "Error-handling plugs for clug (opt-in)."
+  :version "0.3.0"
+  :depends-on ("clug")
+  :pathname "src/"
+  :components ((:file "errors")))
+
 (defsystem "clug/tests"
-  :depends-on ("clug" "clug/parsers" "fiveam" "flexi-streams" "babel")
+  :depends-on ("clug" "clug/parsers" "clug/errors" "fiveam" "flexi-streams" "babel")
   :pathname "tests/"
   :components ((:file "main"))
   :perform (test-op (op c) (symbol-call :fiveam :run! :clug)))
