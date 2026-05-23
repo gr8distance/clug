@@ -12,6 +12,8 @@
    #:halt
    #:get-req-header #:read-req-body
    #:put-resp-cookie #:fetch-req-cookies
+   #:tag-request-id #:request-id #:generate-request-id
+   #:*request-id-header* #:*request-id-max-length*
    ;; clug/parsers (opt-in)
    #:body-string #:json-body #:obj
    #:render-json #:render-error #:parse-json

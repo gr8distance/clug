@@ -8,9 +8,10 @@
   :components ((:file "package")
                (:file "path"     :depends-on ("package"))
                (:file "conn"     :depends-on ("package" "path"))
-               (:file "pipeline" :depends-on ("conn"))
-               (:file "router"   :depends-on ("conn" "pipeline" "path"))
-               (:file "clack"    :depends-on ("conn" "router")))
+               (:file "pipeline"   :depends-on ("conn"))
+               (:file "request-id" :depends-on ("conn"))
+               (:file "router"     :depends-on ("conn" "pipeline" "path"))
+               (:file "clack"      :depends-on ("conn" "router")))
   :in-order-to ((test-op (test-op "clug/tests"))))
 
 (defsystem "clug/parsers"

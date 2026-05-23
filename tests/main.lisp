@@ -212,6 +212,32 @@ Set-Cookie: a=1"))
 (test put-header-rejects-set-cookie
   (signals error (put-header (make-conn) "set-cookie" "a=1")))
 
+;;; --- request-id (core) ----------------------------------------------------
+
+(test tag-request-id-generates-when-missing
+  (let* ((c (tag-request-id (make-conn))))
+    (is (not (null (request-id c))))
+    (is (equal (request-id c) (get-resp-header c "x-request-id")))))
+
+(test tag-request-id-trusts-incoming
+  (let* ((c (make-conn :req (fake-env
+                             :headers '("x-request-id" "upstream-abc-123"))))
+         (out (tag-request-id c)))
+    (is (equal "upstream-abc-123" (request-id out)))
+    (is (equal "upstream-abc-123" (get-resp-header out "x-request-id")))))
+
+(test tag-request-id-rejects-oversize-incoming
+  (let* ((huge (make-string 500 :initial-element #\a))
+         (c (make-conn :req (fake-env :headers (list "x-request-id" huge))))
+         (out (tag-request-id c)))
+    (is (not (equal huge (request-id out))))
+    (is (<= (length (request-id out)) clug:*request-id-max-length*))))
+
+(test tag-request-id-custom-generator
+  (let ((out (tag-request-id (make-conn) :generator (lambda () "fixed"))))
+    (is (equal "fixed" (request-id out)))
+    (is (equal "fixed" (get-resp-header out "x-request-id")))))
+
 ;;; --- clug/parsers ---------------------------------------------------------
 
 (asdf:load-system :clug/parsers)

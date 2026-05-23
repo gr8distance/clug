@@ -125,9 +125,15 @@
     :backtrace
     (lambda (app) (with-session app))
     (to-clack-app
-     (with-error-catcher (clug::router-as-plug *routes*)
-                         :renderer (lambda (c e)
-                                     (render-error c 500 (format nil "~a" e)))))))
+     (with-error-catcher
+      ;; tag-request-id runs before the router so every response carries
+      ;; x-request-id and handlers / error renderers can correlate via
+      ;; (request-id conn).
+      (pipeline #'tag-request-id (clug::router-as-plug *routes*))
+      :renderer (lambda (c e)
+                  (render-error c 500
+                                (format nil "~a (request-id ~a)"
+                                        e (request-id c))))))))
 
 (defvar *server* nil)
 

@@ -80,6 +80,7 @@ existing Clack/Lack ecosystem libraries.
 | Response header lookup | `(get-resp-header conn "content-type")` |
 | Response cookies (single) | `(put-resp-cookie conn "key" "val" :max-age ...)` |
 | Request cookie parsing | `(fetch-req-cookies conn)` |
+| Request ID (`x-request-id`) for log correlation | `tag-request-id` plug + `(request-id conn)` |
 | Percent-decoding (path + query) | Automatic |
 | Header injection / CRLF defense | Automatic (`put-header` rejects) |
 
