@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Roswell + SBCL + Quicklisp
+        uses: 40ants/setup-lisp@v4
+        with:
+          asdf-system: clug
+
+      - name: Run tests
+        run: ros -L sbcl-bin --load .github/run-tests.lisp
