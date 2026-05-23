@@ -202,8 +202,10 @@ with global middleware:
 
 ## Example
 
-See [`examples/hello.lisp`](examples/hello.lisp) for a full app with auth,
-nested scopes, and JSON responses. To run it:
+See [`examples/hello.lisp`](examples/hello.lisp) for a minimal app, or
+[`examples/api.lisp`](examples/api.lisp) for a REST API exercising
+`:clug/parsers`, `:clug/errors`, and `:clug/session` end-to-end. To
+run hello:
 
 ```sh
 sbcl --load ~/quicklisp/setup.lisp --load examples/serve.lisp
@@ -241,6 +243,68 @@ values they receive:
 `put-header` also rejects non-string names and values up front.
 
 ---
+
+## Opt-in sub-systems
+
+clug core stays free of JSON, error-handling, and session concerns.
+Three sibling ASDF systems live in the same repo and add those pieces
+when you want them — same `ql:quickload`, no extra git remote:
+
+```lisp
+(ql:quickload '(:clug :clug/parsers :clug/errors :clug/session))
+```
+
+### `clug/parsers` — JSON in/out
+
+```lisp
+;; request body
+(json-body conn)                       ; -> hash-table | list | nil
+
+;; response
+(render-json  conn 200 (obj "ok" t "user" "alice"))
+(render-error conn 400 "title required")
+
+;; plug form: stash parsed JSON under (:json-body)
+(pipeline 'parse-json 'create-user)
+```
+
+Backed by `yason` + `babel`. Pair `json-body` with
+`with-error-catcher` — malformed JSON signals an error.
+
+### `clug/errors` — conn-level 500 boundary
+
+```lisp
+(with-error-catcher (clug::router-as-plug *routes*)
+                    :renderer (lambda (c e)
+                                (render-error c 500 (format nil "~a" e))))
+```
+
+Place immediately around the router. Default renderer emits
+`text/plain`; swap with `render-error` from `:clug/parsers` for JSON.
+
+### `clug/session` — cookie-based session, no body parsing
+
+```lisp
+(get-session-value conn :user-id)
+(put-session-value conn :user-id "u-123")
+(clear-session     conn)             ; destroys server-side + expires cookie
+
+(lack:builder
+  (lambda (app) (with-session app :store (make-memory-store)))
+  (to-clack-app ...))
+```
+
+Pluggable store via `store-load` / `store-save` / `store-delete`
+generic functions; default is a thread-safe in-memory hash-table.
+
+**Why not `lack-middleware-session`?** Its `extract-sid` calls
+`lack/request:make-request`, which calls `http-body:parse` on every
+request whose body has a parseable content-type. For JSON APIs that
+means an entire `yason:parse` runs on every POST/PUT (perf tax), a
+malformed `{` crashes the request before any handler-level rescue can
+fire (DoS), and a 100 MB multipart upload is buffered into memory just
+to read a cookie. `clug/session` reads the Cookie header directly and
+never touches the body.
 
 ## Composing with Lack middleware
 
@@ -289,7 +353,7 @@ deliberately *out of scope*:
 
 | not in clug | use this instead |
 |---|---|
-| sessions | `lack-middleware-session` (+ store) |
+| sessions | `clug/session` (preferred — see above) or `lack-middleware-session` |
 | static file serving | `lack-middleware-static`, `lack-app-file`, `lack-app-directory` |
 | CSRF | `lack-middleware-csrf` |
 | access logging | `lack-middleware-accesslog` |
@@ -302,8 +366,9 @@ deliberately *out of scope*:
 | Accept-header content negotiation | `lack.request:request-accepts-p` |
 | outbound HTTP requests | `dexador` |
 
-JSON body parsing and an error-handler plug will arrive as separate
-sister packages (`clug-parsers`, `clug-errors`) rather than in core.
+JSON body parsing, error handling, and session are shipped as opt-in
+sibling systems (`clug/parsers`, `clug/errors`, `clug/session`) — see
+[Opt-in sub-systems](#opt-in-sub-systems) above.
 
 ## Source layout
 
@@ -312,6 +377,9 @@ sister packages (`clug-parsers`, `clug-errors`) rather than in core.
 | `src/conn.lisp`     | `conn` struct + pure updaters |
 | `src/pipeline.lisp` | `pipeline`, `run-pipeline` — composition with halt short-circuit |
 | `src/path.lisp`     | `compile-path`, `match-path` — `:param` style matching |
+| `src/parsers.lisp`  | opt-in `:clug/parsers` — JSON in/out helpers |
+| `src/errors.lisp`   | opt-in `:clug/errors` — conn-level 500 boundary |
+| `src/session.lisp`  | opt-in `:clug/session` — cookie-based session middleware |
 | `src/router.lisp`   | `route`, `scope`, `defroutes` — data-only route definitions |
 | `src/clack.lisp`    | Clack env ↔ conn translation |
 
