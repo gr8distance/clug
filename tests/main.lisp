@@ -46,15 +46,12 @@
 (defun tag-pipe (c) (assign c :tagged t))
 (defun admin-pipe (c) (assign c :admin t))
 
-(defparameter *r*
-  (make-router
-   :entries
-   (append
-    (route :get "/" 'h-index)
-    (scope "/api" :pipe-through '(tag-pipe)
-      (route :get "/users/:id" 'h-show)
-      (scope "/admin" :pipe-through '(admin-pipe)
-        (route :get "/stats" 'h-stats))))))
+(defroutes *r*
+  (:get "/" 'h-index)
+  (scope "/api" :pipe-through '(tag-pipe)
+    (:get "/users/:id" 'h-show)
+    (scope "/admin" :pipe-through '(admin-pipe)
+      (:get "/stats" 'h-stats))))
 
 (defun call (router method path)
   (clug::call-router router (make-conn :method method :path path)))

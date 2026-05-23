@@ -44,11 +44,11 @@
 ;;; --- routes ---
 
 (defroutes *routes*
-  (route :get "/" 'hello)
+  (:get "/" 'hello)
   (scope "/api" :pipe-through '(json-headers authenticate)
-    (route :get "/users"      'users-index)
-    (route :get "/users/:id"  'users-show)
+    (:get "/users"      'users-index)
+    (:get "/users/:id"  'users-show)
     (scope "/admin" :pipe-through '(require-admin)
-      (route :get "/stats" 'admin-stats))))
+      (:get "/stats" 'admin-stats))))
 
 (defparameter *app* (to-clack-app *routes*))

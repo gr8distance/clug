@@ -15,14 +15,39 @@ HANDLER is a symbol or function — a plug. PIPE-THROUGH is a list of plugs."
               :handler handler
               :pipes (alexandria:ensure-list pipe-through))))
 
-(defun scope (prefix &rest args)
-  "Apply PREFIX and optional :pipe-through to nested route entries.
-Usage: (scope \"/api\" :pipe-through '(auth) entry-list ...)"
+(defun %scope (prefix &rest args)
+  "Runtime form of SCOPE. Takes already-built entry lists as children."
   (multiple-value-bind (pipes children) (parse-scope-args args)
     (let ((prefix-segs (compile-path prefix)))
       (loop for child-list in children
             append (loop for entry in child-list
                          collect (extend-entry entry prefix-segs prefix pipes))))))
+
+(defun rewrite-route-form (form)
+  "Rewrite (:method path handler ...) into (route :method path handler ...).
+Leave (scope ...) calls alone — the SCOPE macro handles its own body."
+  (cond
+    ((atom form) form)
+    ((keywordp (car form))
+     (cons 'route form))
+    (t form)))
+
+(defmacro scope (prefix &rest rest)
+  "Group routes under PREFIX with optional :pipe-through plugs.
+
+  (scope \"/api\" :pipe-through '(auth)
+    (:get \"/users\"     'users-index)
+    (:get \"/users/:id\" 'users-show)
+    (scope \"/admin\" :pipe-through '(require-admin)
+      (:get \"/stats\" 'admin-stats)))"
+  (multiple-value-bind (opts children) (split-scope-head rest)
+    `(%scope ,prefix ,@opts ,@(mapcar #'rewrite-route-form children))))
+
+(defun split-scope-head (forms)
+  "Split FORMS into ((:pipe-through X) and remaining children)."
+  (if (eq (first forms) :pipe-through)
+      (values (list :pipe-through (second forms)) (cddr forms))
+      (values nil forms)))
 
 (defun parse-scope-args (args)
   "Split ARGS into (pipe-through-list, list-of-child-entry-lists)."
@@ -89,7 +114,11 @@ Usage: (scope \"/api\" :pipe-through '(auth) entry-list ...)"
 
 ;;; DSL macro: bind a router to a name.
 (defmacro defroutes (name &body body)
-  "Define NAME as a router built from BODY forms (each returning entry lists)."
+  "Define NAME as a router. Body forms are either:
+
+  (:method path handler &key pipe-through)   ; shorthand for (route ...)
+  (scope prefix [:pipe-through xs] ...)      ; nested group
+  (route :method path handler ...)           ; explicit form"
   `(defparameter ,name
      (make-router
-      :entries (append ,@body))))
+      :entries (append ,@(mapcar #'rewrite-route-form body)))))

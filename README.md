@@ -44,7 +44,7 @@ You'll also need a Clack handler (e.g. `clack-handler-hunchentoot` or
             (list "Content-Type" "text/plain")))
 
 (defroutes *routes*
-  (route :get "/" 'hello))
+  (:get "/" 'hello))
 
 (defparameter *app* (to-clack-app *routes*))
 
@@ -110,22 +110,26 @@ A **plug** is any function `(conn) -> conn`. Compose with `pipeline`:
 
 `halt` short-circuits the rest of the pipeline. That's the entire protocol.
 
-### route / scope / defroutes
+### defroutes / scope
 
-`route` and `scope` are plain functions returning route-entry lists. `scope`
-prepends a path prefix and concatenates `:pipe-through` plugs. Scopes nest
-freely.
+Inside `defroutes` (and `scope`), any form starting with an HTTP-method keyword
+is a route. `scope` prepends a path prefix and accumulates `:pipe-through`
+plugs. Scopes nest freely.
 
 ```lisp
 (defroutes *routes*
-  (route :get "/"                       'home)
+  (:get "/" 'home)
   (scope "/api" :pipe-through '(json-headers authenticate)
-    (route :get  "/users"      'users-index)
-    (route :get  "/users/:id"  'users-show)
-    (route :post "/users"      'users-create)
+    (:get  "/users"      'users-index)
+    (:get  "/users/:id"  'users-show)
+    (:post "/users"      'users-create)
     (scope "/admin" :pipe-through '(require-admin)
-      (route :get "/stats" 'admin-stats))))
+      (:get "/stats" 'admin-stats))))
 ```
+
+If you'd rather build routes programmatically, the underlying `route` function
+is still exported: `(route :get "/x" 'h :pipe-through '(p))` returns an entry
+list you can splice into `make-router`.
 
 For `/api/admin/stats`, the effective pipeline becomes:
 
