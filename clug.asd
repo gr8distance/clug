@@ -1,6 +1,6 @@
 (defsystem "clug"
   :description "A tiny Clack routing plugin in the spirit of Phoenix Plug."
-  :version "0.1.0"
+  :version "0.2.0"
   :author "ug <gr8.distance@gmail.com>"
   :license "MIT"
   :depends-on ("clack" "alexandria" "quri")

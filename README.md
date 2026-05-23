@@ -240,6 +240,71 @@ values they receive:
 
 `put-header` also rejects non-string names and values up front.
 
+---
+
+## Composing with Lack middleware
+
+A clug app is a Clack/Lack app, so `lack:builder` wraps any middleware
+around it. Cross-cutting concerns (sessions, static files, CSRF, gzip,
+logging, dev error pages) live in Lack's middleware ecosystem — clug
+deliberately doesn't reimplement them.
+
+```lisp
+(clack:clackup
+  (lack:builder
+    :accesslog
+    :backtrace                                     ; dev pretty errors
+    (:static :path "/public/" :root #P"public/")
+    :session                                       ; in-memory store by default
+    (to-clack-app *routes*))
+  :port 5000)
+```
+
+Inside a handler, middleware-supplied values are reachable via `conn-req`:
+
+```lisp
+(defun me (conn)
+  (let* ((session (getf (conn-req conn) :lack.session))
+         (uid     (and session (gethash :user-id session))))
+    (put-resp conn 200 (or uid "anonymous"))))
+```
+
+Middleware shipped with Lack that pairs naturally with clug:
+
+| middleware | role |
+|---|---|
+| `lack-middleware-session` | session + cookie wiring (`lack-session-store-dbi`, `-redis` available) |
+| `lack-middleware-static` | serve a directory of static files |
+| `lack-middleware-csrf` | CSRF token validation |
+| `lack-middleware-accesslog` | request logging |
+| `lack-middleware-backtrace` | dev-mode error pages with stack trace |
+| `lack-middleware-mount` | mount a sub-app at a prefix (Plug's `forward`) |
+| `lack-middleware-auth-basic` | HTTP Basic authentication |
+| `lack-middleware-deflater` | gzip response compression |
+
+## What clug intentionally does NOT do
+
+To stay tiny and avoid reinventing solved problems, the following are
+deliberately *out of scope*:
+
+| not in clug | use this instead |
+|---|---|
+| sessions | `lack-middleware-session` (+ store) |
+| static file serving | `lack-middleware-static`, `lack-app-file`, `lack-app-directory` |
+| CSRF | `lack-middleware-csrf` |
+| access logging | `lack-middleware-accesslog` |
+| gzip compression | `lack-middleware-deflater` |
+| pretty error pages | `lack-middleware-backtrace` |
+| mounting sub-apps at a prefix | `lack-middleware-mount` |
+| HTTP Basic auth | `lack-middleware-auth-basic` |
+| WebSocket | `clack-socket` + `websocket-driver` |
+| form / multipart body parsing | `lack.request:request-body-parameters` (uses `http-body`) |
+| Accept-header content negotiation | `lack.request:request-accepts-p` |
+| outbound HTTP requests | `dexador` |
+
+JSON body parsing and an error-handler plug will arrive as separate
+sister packages (`clug-parsers`, `clug-errors`) rather than in core.
+
 ## Source layout
 
 | File | Responsibility |
