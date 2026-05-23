@@ -89,6 +89,16 @@ server-side data and expire the client cookie on response."
     (when state (setf (getf state :destroy) t)))
   conn)
 
+(defun rotate-session-id (conn)
+  "Defense against session fixation: ask the middleware to generate a
+fresh sid for the current session, copy the data over, and delete the
+old sid from the store. Call this immediately after a privilege change
+(login, account elevation) so any sid an attacker may have planted on
+the user cannot ride the new privilege level."
+  (let ((state (getf (conn-req conn) :clug.session-state)))
+    (when state (setf (getf state :rotate) t)))
+  conn)
+
 (defun session-id (conn)
   (getf (getf (conn-req conn) :clug.session-state) :sid))
 
@@ -134,7 +144,8 @@ PUT-SESSION-VALUE / CLEAR-SESSION."
            (sid       (cdr (assoc cookie-key cookies :test #'equal)))
            (data      (or (and sid (store-load store sid))
                           (make-hash-table :test 'equal)))
-           (state     (list :sid sid :dirty nil :destroy nil :original-sid sid))
+           (state     (list :sid sid :dirty nil :destroy nil
+                            :rotate nil :original-sid sid))
            (response  (funcall app (list* :clug.session data
                                           :clug.session-state state
                                           env))))
@@ -145,6 +156,22 @@ PUT-SESSION-VALUE / CLEAR-SESSION."
          (add-set-cookie response
                          (%expire-cookie-value cookie-key path domain
                                                http-only secure same-site)))
+        ;; Rotation requested (privilege change): same data, new sid,
+        ;; old sid removed from store, fresh Set-Cookie. Even if the
+        ;; caller didn't write any new value, rotation alone is a write
+        ;; — we always re-save and emit a cookie.
+        ((getf state :rotate)
+         (let ((new-sid (funcall sid-generator)))
+           (store-save store new-sid data)
+           (when (and sid (not (string= sid new-sid)))
+             (store-delete store sid))
+           (add-set-cookie response
+                           (serialize-cookie cookie-key new-sid
+                                             :path path :domain domain
+                                             :max-age max-age
+                                             :http-only http-only
+                                             :secure secure
+                                             :same-site same-site))))
         ;; Dirty: persist; if SID is new, emit Set-Cookie.
         ((getf state :dirty)
          (let ((sid (or sid (funcall sid-generator))))

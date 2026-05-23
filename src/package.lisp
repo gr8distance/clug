@@ -22,6 +22,7 @@
    ;; clug/session (opt-in)
    #:with-session
    #:get-session-value #:put-session-value #:clear-session #:session-id
+   #:rotate-session-id
    #:store-load #:store-save #:store-delete
    #:memory-store #:make-memory-store
    #:generate-sid

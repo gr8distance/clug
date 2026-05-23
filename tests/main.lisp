@@ -387,6 +387,37 @@ Set-Cookie: a=1"))
         (is (not (null sc)))
         (is (search "Max-Age=0" sc))))))
 
+(test session-rotate-issues-new-sid-and-deletes-old
+  ;; Pre-populate the store under SID_old.
+  (let* ((store (make-memory-store))
+         (old-sid "deadbeef0000")
+         (data (alexandria:plist-hash-table '(:user "alice") :test 'equal))
+         (_ (store-save store old-sid data))
+         (app (with-session
+                (lambda (env)
+                  (let ((c (make-conn :req env)))
+                    (rotate-session-id c)
+                    (list 200 nil '(""))))
+                :store store))
+         (response (funcall app
+                            (env-with-cookie (format nil "clug.session=~a" old-sid)))))
+    (declare (ignore _))
+    (is (= 200 (first response)))
+    ;; old sid is gone from the store
+    (is (null (store-load store old-sid)))
+    ;; a fresh Set-Cookie is emitted
+    (let ((sc (cookie-from-response response "clug.session")))
+      (is (not (null sc)))
+      ;; ... carrying a new sid (not the old value)
+      (let* ((eq-pos (position #\= sc))
+             (semi   (position #\; sc))
+             (new-sid (subseq sc (1+ eq-pos) semi)))
+        (is (not (string= old-sid new-sid)))
+        ;; data preserved under the new sid
+        (let ((reloaded (store-load store new-sid)))
+          (is (not (null reloaded)))
+          (is (equal "alice" (gethash :user reloaded))))))))
+
 (test session-no-cookie-when-not-touched
   (let* ((app (with-session (lambda (env)
                               (declare (ignore env))
