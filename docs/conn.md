@@ -86,6 +86,18 @@ value, so it's safe to use in multiple plugs.
 Body type depends on the adapter: strings if the adapter pre-decoded,
 octet vectors otherwise. `NIL` if no body.
 
+> ⚠️ **Request body size limits live in the Clack handler**, not
+> here. `read-req-body` drains whatever the handler hands clug —
+> if the handler accepted a 4 GB upload, this function will dutifully
+> read 4 GB into memory. Configure the cap upstream:
+>
+> - **Hunchentoot**: set `hunchentoot:*hunchentoot-default-external-format*`
+>   and the request-class's content-length limit.
+> - **Woo**: pass `:body-buffer-limit` to `woo:run` (and reject
+>   oversized bodies before they reach clug).
+> - **Generic**: front clug with `lack-middleware-mount`-style
+>   middleware that checks `:content-length` and short-circuits a 413.
+
 ### `(fetch-req-cookies conn) → (values ALIST conn')`
 
 Parse the request `Cookie` header into an alist of

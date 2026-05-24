@@ -48,8 +48,12 @@ content-type: text/plain; charset=utf-8
 Internal Server Error: <condition>
 ```
 
-The default is **fine for development**. For production, you'll
-want a custom renderer — see the next section.
+> ⚠️ **The default is for development only.** The condition's
+> printed form may include internal file paths, SQL fragments,
+> stack trace lines, or other data that should never reach the
+> client. Production deployments **must** supply a custom
+> `:renderer` that logs the condition server-side and returns a
+> sanitised response (see the next section).
 
 ---
 

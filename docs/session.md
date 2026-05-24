@@ -95,7 +95,7 @@ If you wrap your clug app in other Clack middleware (e.g.
 | `:path`         | `"/"`                 | cookie path |
 | `:domain`       | nil                   | cookie domain |
 | `:max-age`      | `2592000` (30 days)   | cookie lifetime in seconds |
-| `:secure`       | nil                   | set `t` in production HTTPS |
+| `:secure`       | nil                   | ⚠️ **must be `t` in any HTTPS deployment**. Default is `nil` so dev over plain HTTP works; production-over-HTTPS that leaves it `nil` lets a network-MITM read the session cookie even when the user's page itself is HTTPS. |
 | `:http-only`    | `t`                   | block JS access — recommended for session cookies |
 | `:same-site`    | `:lax`                | `:strict` / `:lax` / `:none` |
 | `:sid-generator` | `#'generate-sid`     | thunk returning a fresh SID string |
