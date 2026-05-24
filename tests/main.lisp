@@ -253,6 +253,41 @@ Set-Cookie: a=1"))
     (is (not (equal huge (request-id out))))
     (is (<= (length (request-id out)) clug:*request-id-max-length*))))
 
+(test tag-request-id-rejects-ansi-escape
+  ;; ANSI escape sequences in an upstream X-Request-Id would leak
+  ;; control codes into log output. We restrict the trusted charset
+  ;; to alphanumerics + dash/underscore/dot/plus.
+  (let* ((c (make-conn :req (fake-env
+                             :headers (list "x-request-id"
+                                            (format nil "~aREDFAKE-ERROR~a"
+                                                    (code-char 27) (code-char 27))))))
+         (out (tag-request-id c :generator (lambda () "regenerated"))))
+    (is (equal "regenerated" (request-id out)))))
+
+(test tag-request-id-rejects-whitespace-and-delimiters
+  (let* ((c (make-conn :req (fake-env
+                             :headers '("x-request-id" "has spaces inside"))))
+         (out (tag-request-id c :generator (lambda () "regen"))))
+    (is (equal "regen" (request-id out))))
+  (let* ((c (make-conn :req (fake-env
+                             :headers '("x-request-id" "bad,comma"))))
+         (out (tag-request-id c :generator (lambda () "regen"))))
+    (is (equal "regen" (request-id out)))))
+
+(test tag-request-id-trusts-safe-charset
+  (let* ((c (make-conn :req (fake-env
+                             :headers '("x-request-id" "abc-123_def.456+ok"))))
+         (out (tag-request-id c)))
+    (is (equal "abc-123_def.456+ok" (request-id out)))))
+
+(test safe-request-id-p-checks
+  (is (clug:safe-request-id-p "abc123"))
+  (is (clug:safe-request-id-p "a-b_c.d+e"))
+  (is (not (clug:safe-request-id-p "")))
+  (is (not (clug:safe-request-id-p nil)))
+  (is (not (clug:safe-request-id-p (format nil "x~ay" #\Newline))))
+  (is (not (clug:safe-request-id-p "has spaces"))))
+
 (test tag-request-id-custom-generator
   (let ((out (tag-request-id (make-conn) :generator (lambda () "fixed"))))
     (is (equal "fixed" (request-id out)))
