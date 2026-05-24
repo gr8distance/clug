@@ -14,6 +14,8 @@
    #:put-resp-cookie #:fetch-req-cookies
    #:tag-request-id #:request-id #:generate-request-id
    #:*request-id-header* #:*request-id-max-length*
+   #:*request-id-allowed-charset* #:safe-request-id-p
+   #:insecure-random-unavailable #:insecure-random-reason
    ;; clug/parsers (opt-in)
    #:body-string #:json-body #:obj
    #:render-json #:render-error #:parse-json

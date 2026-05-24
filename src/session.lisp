@@ -53,18 +53,16 @@ single-process deployments; swap for a Redis/DB store in production."))
 ;;; --- SID generation -------------------------------------------------------
 
 (defun generate-sid (&optional (bytes 16))
-  "Return a hex-encoded session ID. Uses /dev/urandom when available;
-falls back to CL's RANDOM (non-cryptographic) otherwise — Unix and macOS
-get crypto-grade IDs out of the box, other platforms should bind a
-custom generator via the :sid-generator key."
-  (let ((urandom (open "/dev/urandom" :element-type '(unsigned-byte 8)
-                                       :direction :input
-                                       :if-does-not-exist nil)))
-    (unwind-protect
-         (with-output-to-string (out)
-           (loop repeat bytes do
-             (format out "~2,'0x" (if urandom (read-byte urandom) (random 256)))))
-      (when urandom (close urandom)))))
+  "Return a hex-encoded session ID. Reads from /dev/urandom. On
+platforms without /dev/urandom (Windows) this fails closed —
+INSECURE-RANDOM-UNAVAILABLE is signalled rather than falling back to
+CL's RANDOM, which is non-cryptographic and would let an attacker
+predict session IDs from any observed run of outputs.
+
+The remediation on those platforms is to pass WITH-SESSION a
+:sid-generator that calls an actual CSPRNG (ironclad:strong-random-bytes,
+the Windows CryptGenRandom binding, etc.)."
+  (%read-urandom-hex bytes))
 
 ;;; --- conn-level helpers ---------------------------------------------------
 
