@@ -68,17 +68,17 @@ clug is documented as topic pages under [`docs/`](./docs/).
 - [pipeline](./docs/pipeline.md) — composing plugs and halting
 - [router](./docs/router.md) — `defroutes`, `scope`, path patterns, params
 
-**Opt-in subsystems** (each is a separate ASD system)
+**Subsystems**
 
-- [request-id](./docs/request-id.md) — `x-request-id` correlation *(coming)*
-- [parsers](./docs/parsers.md) — JSON request/response helpers *(coming)*
-- [errors](./docs/errors.md) — 500-renderer for handler exceptions *(coming)*
-- [session](./docs/session.md) — cookie-based session middleware *(coming)*
+- [request-id](./docs/request-id.md) — `x-request-id` correlation (in core)
+- [parsers](./docs/parsers.md) — JSON request/response helpers (opt-in `clug/parsers`)
+- [errors](./docs/errors.md) — 500-renderer for handler exceptions (opt-in `clug/errors`)
+- [session](./docs/session.md) — cookie-based session middleware (opt-in `clug/session`)
 
 **Cross-cutting**
 
-- [Cookbook](./docs/cookbook.md) — task-driven recipes *(coming)*
-- [Testing](./docs/testing.md) — testing plugs and handlers *(coming)*
+- [Cookbook](./docs/cookbook.md) — task-driven recipes
+- [Testing](./docs/testing.md) — testing plugs and handlers
 
 ---
 
