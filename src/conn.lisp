@@ -182,8 +182,24 @@ separate Set-Cookie headers (bypassing put-header's dedup)."
                                                :same-site same-site)
                              (conn-headers conn))))
 
+(defun %check-cookie-attr (name value)
+  "Reject CR/LF/NUL in a cookie attribute value. PUT-RESP-COOKIE
+bypasses PUT-HEADER's dedup path on purpose, so attribute strings
+have to be re-validated here — otherwise an attacker who can plant a
+value into :path / :domain / :expires can inject extra Set-Cookie or
+arbitrary response headers."
+  (unless (valid-header-value-p value)
+    (error "Invalid cookie ~a ~s — must be a string with no CR, LF, or NUL"
+           name value)))
+
 (defun serialize-cookie (name value &key path domain max-age expires
                                          http-only secure same-site)
+  (when path     (%check-cookie-attr "path"    path))
+  (when domain   (%check-cookie-attr "domain"  domain))
+  (when expires  (%check-cookie-attr "expires" expires))
+  (when max-age
+    (check-type max-age (integer 0 *)
+                "a non-negative integer (seconds) for cookie Max-Age"))
   (with-output-to-string (s)
     (format s "~a=~a" name (quri:url-encode value))
     (when path     (format s "; Path=~a" path))

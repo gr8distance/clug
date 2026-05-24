@@ -212,6 +212,26 @@ Set-Cookie: a=1"))
 (test put-header-rejects-set-cookie
   (signals error (put-header (make-conn) "set-cookie" "a=1")))
 
+(test put-resp-cookie-rejects-crlf-in-path
+  ;; Without attribute validation, a CR/LF in :path could inject
+  ;; arbitrary response headers via Set-Cookie. PUT-RESP-COOKIE
+  ;; bypasses PUT-HEADER's dedup path, so attributes must be
+  ;; re-validated.
+  (signals error
+    (put-resp-cookie (make-conn) "sid" "x"
+                     :path (format nil "/foo~aSet-Cookie: evil=1" #\Newline)))
+  (signals error
+    (put-resp-cookie (make-conn) "sid" "x"
+                     :path (format nil "/foo~areturn" #\Return)))
+  (signals error
+    (put-resp-cookie (make-conn) "sid" "x" :domain (format nil "x~ay" #\Newline)))
+  (signals error
+    (put-resp-cookie (make-conn) "sid" "x" :expires (format nil "x~ay" #\Return))))
+
+(test put-resp-cookie-rejects-negative-max-age
+  (signals error
+    (put-resp-cookie (make-conn) "sid" "x" :max-age -1)))
+
 ;;; --- request-id (core) ----------------------------------------------------
 
 (test tag-request-id-generates-when-missing
