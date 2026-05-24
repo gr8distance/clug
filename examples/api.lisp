@@ -1,5 +1,28 @@
 ;;; A Plug-style REST API demonstrating clug + opt-in sub-systems.
 ;;;
+;;; ============================================================
+;;; ⚠️  THIS IS A clug PRIMITIVE DEMO, NOT A REFERENCE AUTH IMPL.
+;;; ============================================================
+;;;
+;;; The login handler below uses PLAIN-TEXT password storage and a
+;;; non-constant-time EQUAL comparison, and it does NOT rotate the
+;;; session id on login. These are deliberate simplifications so the
+;;; file stays readable as a routing / session demo — they are NOT
+;;; how you build a real login.
+;;;
+;;; For production-grade auth, use clauth:
+;;;   https://github.com/gr8distance/clauth
+;;; which provides Argon2id hashing, constant-time verify, dummy-hash
+;;; timing protection, account lockout, session-token rotation, and
+;;; email-driven confirmation / reset / magic-link flows.
+;;;
+;;; If you keep this file as your starting point, the minimum changes
+;;; required before deploying are:
+;;;   1. Hash passwords (clauth:hash-password / clauth:verify-password)
+;;;   2. Use ironclad:constant-time-equal for any auth comparison
+;;;   3. Call (clug:rotate-session-id conn) immediately after a
+;;;      privilege change to defend against session fixation
+;;;
 ;;; Load with:
 ;;;   (ql:quickload '(:clug :clug/parsers :clug/errors :clug/session
 ;;;                   :clack-handler-hunchentoot :lack))
@@ -50,6 +73,9 @@
   (error "intentional explosion to exercise the error boundary"))
 
 (defun login (conn)
+  ;; ⚠️ DEMO-ONLY auth. EQUAL is short-circuit and the passwords are
+  ;; in plain text — production code MUST use clauth (Argon2id +
+  ;; ironclad:constant-time-equal). See the file header for details.
   (let* ((body (json-body conn))
          (user (and body (gethash "username" body)))
          (pass (and body (gethash "password" body))))
@@ -57,8 +83,13 @@
       ((not (and user pass))
        (render-error conn 400 "username and password required"))
       ((equal pass (gethash user *users*))
-       (put-session-value conn :user-id user)
-       (render-json conn 200 (obj "ok" t "user" user)))
+       ;; rotate-session-id immediately after a privilege change is the
+       ;; session-fixation defense — an attacker who planted a session
+       ;; cookie on the browser pre-login no longer rides the post-login
+       ;; privilege level.
+       (let ((c (rotate-session-id conn)))
+         (put-session-value c :user-id user)
+         (render-json c 200 (obj "ok" t "user" user))))
       (t (render-error conn 401 "bad credentials")))))
 
 (defun logout (conn)
